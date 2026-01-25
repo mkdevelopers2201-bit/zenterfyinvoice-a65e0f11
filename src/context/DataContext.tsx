@@ -1,8 +1,8 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 import { Customer, Item, Invoice } from '@/types/invoice';
 import { toast } from 'sonner';
-import { supabase } from '@src/lib/supabase';
-import { useAuth } from '@src/hooks/useAuth';
+import { supabase } from '@/lib/supabase';
+import { useAuth } from '@/hooks/useAuth';
 
 interface DataContextType {
   customers: Customer[];
