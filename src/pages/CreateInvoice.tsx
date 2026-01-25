@@ -217,6 +217,7 @@ export default function CreateInvoice() {
       gstAmount: calculations.gstAmount,
       grandTotal: calculations.grandTotal,
       status,
+      updatedAt: new Date().toISOString(),
     };
 
     if (editId) {
