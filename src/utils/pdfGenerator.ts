@@ -71,7 +71,7 @@ export function generateInvoicePDF(invoice: Invoice): void {
   <style>
     @page {
       size: A3 portrait;
-      margin: 10mm;
+      margin: 8mm;
     }
     
     * {
@@ -312,6 +312,7 @@ export function generateInvoicePDF(invoice: Invoice): void {
       .invoice-container {
         padding: 0;
         max-width: none;
+        min-height: unset !important;
       }
     }
   </style>
