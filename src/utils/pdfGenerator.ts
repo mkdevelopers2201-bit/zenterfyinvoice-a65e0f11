@@ -43,8 +43,8 @@ export function generateInvoicePDF(invoice: Invoice): void {
     </tr>
   `).join('');
 
-  // Generate empty rows to fill space (minimum 19 rows like the reference)
-  const emptyRowsCount = Math.max(0, 19 - invoice.items.length);
+  // Increased to 24 rows to fill the A4 page height properly
+  const emptyRowsCount = Math.max(0, 24 - invoice.items.length);
   const emptyRowsHTML = Array.from({ length: emptyRowsCount }).map(() => `
     <tr>
       <td class="border-r h-8">&nbsp;</td>
@@ -61,7 +61,6 @@ export function generateInvoicePDF(invoice: Invoice): void {
     </tr>
   `).join('');
 
-  // Create the HTML content matching InvoicePreview exactly
   const htmlContent = `
 <!DOCTYPE html>
 <html>
@@ -70,8 +69,8 @@ export function generateInvoicePDF(invoice: Invoice): void {
   <title>Invoice ${invoice.invoiceNumber}</title>
   <style>
     @page {
-      size: A3 portrait;
-      margin: 8mm 8mm 0mm 8mm;
+      size: A4 portrait;
+      margin: 15mm 10mm 15mm 10mm;
     }
     
     * {
@@ -91,13 +90,11 @@ export function generateInvoicePDF(invoice: Invoice): void {
     
     .invoice-container {
       width: 100%;
-      max-width: 277mm;
+      max-width: 210mm;
       margin: 0 auto;
-      padding: 10mm;
       background: #fff;
     }
     
-    /* Header Section */
     .header {
       border-bottom: 2px solid #000;
       padding-bottom: 12px;
@@ -108,13 +105,13 @@ export function generateInvoicePDF(invoice: Invoice): void {
       display: flex;
       justify-content: space-between;
       font-size: 10px;
-      color: #666;
+      color: #000;
       margin-bottom: 8px;
     }
     
     .company-name {
       text-align: center;
-      font-size: 32px;
+      font-size: 28px;
       font-weight: bold;
       letter-spacing: 2px;
       margin-bottom: 4px;
@@ -123,31 +120,28 @@ export function generateInvoicePDF(invoice: Invoice): void {
     .company-tagline {
       text-align: center;
       font-size: 10px;
-      color: #666;
       margin-bottom: 2px;
     }
     
     .company-address {
       text-align: center;
       font-size: 9px;
-      color: #666;
     }
     
-    /* Tax Invoice Title */
     .tax-invoice-title {
       text-align: center;
       border-top: 2px solid #000;
       border-bottom: 2px solid #000;
-      padding: 8px 0;
+      padding: 6px 0;
       margin-bottom: 12px;
     }
     
     .tax-invoice-title h2 {
-      font-size: 18px;
+      font-size: 16px;
       font-weight: bold;
+      text-transform: uppercase;
     }
     
-    /* Customer & Invoice Info */
     .info-section {
       display: grid;
       grid-template-columns: 1fr 1fr;
@@ -156,19 +150,9 @@ export function generateInvoicePDF(invoice: Invoice): void {
       font-size: 11px;
     }
     
-    .info-left p, .info-right p {
-      margin-bottom: 3px;
-    }
+    .info-right { text-align: right; }
+    .info-label { font-weight: bold; }
     
-    .info-right {
-      text-align: right;
-    }
-    
-    .info-label {
-      font-weight: bold;
-    }
-    
-    /* Items Table */
     .items-table-container {
       border: 1px solid #000;
       margin-bottom: 12px;
@@ -180,58 +164,23 @@ export function generateInvoicePDF(invoice: Invoice): void {
       font-size: 10px;
     }
     
-    .items-table th,
-    .items-table td {
+    .items-table th, .items-table td {
       border: 1px solid #000;
       padding: 4px 3px;
     }
     
-    .items-table thead tr {
-      background-color: #f0f0f0;
-    }
-    
-    .items-table th {
-      font-weight: bold;
-      text-align: center;
-    }
-    
-    .text-center { text-align: center; }
-    .text-right { text-align: right; }
-    .text-left { text-align: left; }
-    .font-medium { font-weight: 500; }
-    .font-bold { font-weight: bold; }
-    
-    .border-r { border-right: 1px solid #000; }
-    .border-b { border-bottom: 1px solid #000; }
-    
-    .h-8 { height: 24px; }
-    
-    .py-1 { padding-top: 3px; padding-bottom: 3px; }
-    .py-2 { padding-top: 6px; padding-bottom: 6px; }
-    .px-1 { padding-left: 3px; padding-right: 3px; }
-    .px-2 { padding-left: 6px; padding-right: 6px; }
+    .items-table thead tr { background-color: #f0f0f0; }
     
     .grand-total-row {
       background-color: #f0f0f0;
       font-weight: bold;
     }
     
-    /* Amount in Words & GST Summary */
     .summary-section {
       display: grid;
-      grid-template-columns: 1fr 1fr;
-      gap: 16px;
+      grid-template-columns: 1.2fr 0.8fr;
+      gap: 10px;
       margin-bottom: 12px;
-      font-size: 10px;
-    }
-    
-    .amount-words {
-      margin-bottom: 12px;
-    }
-    
-    .amount-words p.label {
-      font-weight: bold;
-      margin-bottom: 2px;
     }
     
     .gst-summary-table {
@@ -240,93 +189,30 @@ export function generateInvoicePDF(invoice: Invoice): void {
       border: 1px solid #000;
     }
     
-    .gst-summary-table th,
-    .gst-summary-table td {
+    .gst-summary-table td, .gst-summary-table th {
       border: 1px solid #000;
-      padding: 4px 6px;
+      padding: 4px;
     }
     
-    .gst-summary-table thead {
-      background-color: #f0f0f0;
-    }
-    
-    .gst-total-row {
-      background-color: #f0f0f0;
-      font-weight: bold;
-    }
-    
-    /* Footer Section */
     .footer-section {
       display: grid;
       grid-template-columns: 1fr 1fr;
       gap: 16px;
       border-top: 1px solid #000;
       padding-top: 12px;
-      font-size: 10px;
     }
     
-    .terms h4 {
-      font-weight: bold;
-      margin-bottom: 4px;
-    }
-    
-    .terms ol {
-      margin-left: 16px;
-      color: #666;
-    }
-    
-    .terms ol li {
-      margin-bottom: 2px;
-    }
-    
-    .bank-details {
-      margin-top: 12px;
-    }
-    
-    .bank-details h4 {
-      font-weight: bold;
-      margin-bottom: 4px;
-    }
-    
-    .signature-section {
-      text-align: right;
-    }
-    
-    .signature-section .company-for {
-      font-weight: bold;
-      font-style: italic;
-      margin-bottom: 48px;
-    }
-    
-    .signature-section .signature-line {
-      font-style: italic;
-      color: #666;
-    }
+    .signature-section { text-align: right; }
+    .company-for { font-weight: bold; margin-bottom: 40px; }
     
     @media print {
-      html, body {
-        height: auto !important;
-        min-height: unset !important;
-        margin: 0 !important;
-        padding: 0 !important;
-        -webkit-print-color-adjust: exact;
-        print-color-adjust: exact;
-        overflow: visible !important;
-      }
-      
-      .invoice-container {
-        padding: 0;
-        max-width: none;
-        min-height: unset !important;
-        height: auto !important;
-        overflow: visible !important;
-      }
+      body { margin: 0; }
+      .invoice-container { padding: 0; }
     }
   </style>
 </head>
 <body>
   <div class="invoice-container">
-    <!-- Company Header -->
     <div class="header">
       <div class="header-top">
         <span>GSTIN - 24CMAPK3117Q1ZZ</span>
@@ -334,15 +220,11 @@ export function generateInvoicePDF(invoice: Invoice): void {
       </div>
       <div class="company-name">S. K. ENTERPRISE</div>
       <div class="company-tagline">TRADING IN MILIGIAN SPARE & PARTS OR BRASS PARTS</div>
-      <div class="company-address">SHOP NO 28, GOLDEN POINT, COMMERCIAL COMPLEX, NEAR SHIVOM CIRCLE, PHASE - III DARED, JAMNAGAR (GUJARAT) - 361 005</div>
+      <div class="company-address">SHOP NO 28, GOLDEN POINT, PHASE - III DARED, JAMNAGAR (GUJARAT) - 361 005</div>
     </div>
 
-    <!-- Tax Invoice Title -->
-    <div class="tax-invoice-title">
-      <h2>Tax - Invoice</h2>
-    </div>
+    <div class="tax-invoice-title"><h2>Tax - Invoice</h2></div>
 
-    <!-- Customer & Invoice Info -->
     <div class="info-section">
       <div class="info-left">
         <p><span class="info-label">M/s -</span> ${invoice.customerName}</p>
@@ -351,112 +233,67 @@ export function generateInvoicePDF(invoice: Invoice): void {
       </div>
       <div class="info-right">
         <p><span class="info-label">Invoice Number:</span> ${invoice.invoiceNumber}</p>
-        <p><span class="info-label">Invoice Date:</span> ${format(new Date(invoice.date), 'dd/MM/yyyy')}</p>
-        <p><span class="info-label">Refrence Number:</span> -</p>
+        <p><span class="info-label">Date:</span> ${format(new Date(invoice.date), 'dd/MM/yyyy')}</p>
         <p><span class="info-label">Order No.:</span> ${invoice.po || '-'}</p>
       </div>
     </div>
 
-    <!-- Items Table -->
     <div class="items-table-container">
       <table class="items-table">
         <thead>
           <tr>
-            <th rowspan="2" style="width: 30px;">Sr.<br/>No.</th>
-            <th rowspan="2" style="width: auto;">Particulars</th>
-            <th rowspan="2" style="width: 50px;">HSN</th>
-            <th rowspan="2" style="width: 40px;">QTY</th>
-            <th rowspan="2" style="width: 60px;">RATE</th>
-            <th rowspan="2" style="width: 70px;">AMOUNT</th>
-            <th colspan="2" style="width: 100px;">CGST</th>
-            <th colspan="2" style="width: 100px;">SGST</th>
-            <th rowspan="2" style="width: 80px;">TOTAL</th>
+            <th rowspan="2">Sr.</th>
+            <th rowspan="2">Particulars</th>
+            <th rowspan="2">HSN</th>
+            <th rowspan="2">QTY</th>
+            <th rowspan="2">RATE</th>
+            <th rowspan="2">AMOUNT</th>
+            <th colspan="2">CGST</th>
+            <th colspan="2">SGST</th>
+            <th rowspan="2">TOTAL</th>
           </tr>
           <tr>
-            <th style="width: 40px;">Tax %</th>
-            <th style="width: 60px;">AMOUNT</th>
-            <th style="width: 40px;">Tax %</th>
-            <th style="width: 60px;">AMOUNT</th>
+            <th>%</th><th>AMT</th><th>%</th><th>AMT</th>
           </tr>
         </thead>
         <tbody>
           ${itemRowsHTML}
           ${emptyRowsHTML}
-          <!-- Grand Total Row -->
           <tr class="grand-total-row">
-            <td class="border-r py-2 px-1"></td>
-            <td class="border-r py-2 px-2 font-bold">Grand Total</td>
-            <td class="border-r py-2 px-1"></td>
-            <td class="border-r py-2 px-1"></td>
-            <td class="border-r py-2 px-1"></td>
-            <td class="border-r py-2 px-1 text-right">${formatNumber(totals.amount)}</td>
-            <td class="border-r py-2 px-1"></td>
-            <td class="border-r py-2 px-1 text-right">${formatNumber(totals.cgstAmount)}</td>
-            <td class="border-r py-2 px-1"></td>
-            <td class="border-r py-2 px-1 text-right">${formatNumber(totals.sgstAmount)}</td>
-            <td class="py-2 px-1 text-right font-bold">${formatNumber(totals.total)}</td>
+            <td colspan="5" style="text-align: right">Grand Total</td>
+            <td style="text-align: right">${formatNumber(totals.amount)}</td>
+            <td></td>
+            <td style="text-align: right">${formatNumber(totals.cgstAmount)}</td>
+            <td></td>
+            <td style="text-align: right">${formatNumber(totals.sgstAmount)}</td>
+            <td style="text-align: right">${formatNumber(totals.total)}</td>
           </tr>
         </tbody>
       </table>
     </div>
 
-    <!-- Amount in Words & GST Summary -->
     <div class="summary-section">
       <div>
-        <div class="amount-words">
-          <p class="label">Amount Chargeble (In words)</p>
-          <p class="font-medium">RUPEES - ${numberToWords(totals.total)}</p>
-        </div>
-        <div class="amount-words">
-          <p class="label">GST Amount (In words)</p>
-          <p>RUPEES - ${numberToWords(invoice.gstAmount)}</p>
-        </div>
+        <p><strong>Amount (In words):</strong> RUPEES - ${numberToWords(totals.total)} ONLY</p>
       </div>
-      <div>
-        <table class="gst-summary-table">
-          <thead>
-            <tr>
-              <th colspan="2" class="text-center font-bold">GST Amount</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr>
-              <td>CGST</td>
-              <td class="text-right">${formatCurrency(totals.cgstAmount)}</td>
-            </tr>
-            <tr>
-              <td>SGST</td>
-              <td class="text-right">${formatCurrency(totals.sgstAmount)}</td>
-            </tr>
-            <tr class="gst-total-row">
-              <td>TOTAL TAX AMOUNT</td>
-              <td class="text-right">${formatCurrency(invoice.gstAmount)}</td>
-            </tr>
-          </tbody>
-        </table>
-      </div>
+      <table class="gst-summary-table">
+        <tr><td>CGST</td><td align="right">${formatCurrency(totals.cgstAmount)}</td></tr>
+        <tr><td>SGST</td><td align="right">${formatCurrency(totals.sgstAmount)}</td></tr>
+        <tr style="background:#f0f0f0"><td><strong>TOTAL TAX</strong></td><td align="right"><strong>${formatCurrency(invoice.gstAmount)}</strong></td></tr>
+      </table>
     </div>
 
-    <!-- Terms & Bank Details -->
     <div class="footer-section">
-      <div>
-        <div class="terms">
-          <h4>Terms & Conditions</h4>
-          <ol>
-            <li>Goods are dispatched on buyer's risk</li>
-            <li>Interest will be charges @ 12 % if bill is not paid within 7 days.</li>
-            <li>In case of dispute only JAMNAGAR Court Will have JURISDICTION.</li>
-          </ol>
-        </div>
-        <div class="bank-details">
-          <h4>Bank Details</h4>
-          <p>Kotak Bank A/c. Number :- 4711625484</p>
-          <p>IFSC Code :- KKBK0002936</p>
-        </div>
+      <div class="terms">
+        <strong>Terms & Conditions:</strong>
+        <p>1. Goods dispatched at buyer's risk.</p>
+        <p>2. Interest @ 12% if not paid in 7 days.</p>
+        <p>3. Subject to JAMNAGAR Jurisdiction.</p>
       </div>
       <div class="signature-section">
         <p class="company-for">For S. K. Enterprise</p>
-        <p class="signature-line">Authorised Singture</p>
+        <br/><br/>
+        <p>Authorised Signature</p>
       </div>
     </div>
   </div>
@@ -464,59 +301,14 @@ export function generateInvoicePDF(invoice: Invoice): void {
 </html>
 `;
 
-  // Prefer popup (supports native print-to-PDF), fallback to hidden iframe (avoids popup blockers)
-  try {
-    const printWindow = window.open('', '_blank', 'width=1200,height=800');
-    if (printWindow) {
-      printWindow.document.open();
-      printWindow.document.write(htmlContent);
-      printWindow.document.close();
-      printWindow.focus();
-      printWindow.onafterprint = () => {
-        try {
-          printWindow.close();
-        } catch {
-          // ignore
-        }
-      };
+  const printWindow = window.open('', '_blank');
+  if (printWindow) {
+    printWindow.document.write(htmlContent);
+    printWindow.document.close();
+    printWindow.focus();
+    setTimeout(() => {
       printWindow.print();
-      return;
-    }
-  } catch {
-    // ignore and fallback
+      printWindow.close();
+    }, 500);
   }
-
-  const iframe = document.createElement('iframe');
-  iframe.setAttribute('aria-hidden', 'true');
-  iframe.style.position = 'fixed';
-  iframe.style.right = '0';
-  iframe.style.bottom = '0';
-  iframe.style.width = '0';
-  iframe.style.height = '0';
-  iframe.style.border = '0';
-  iframe.style.opacity = '0';
-  iframe.style.pointerEvents = 'none';
-  iframe.srcdoc = htmlContent;
-
-  document.body.appendChild(iframe);
-
-  const cleanup = () => {
-    try {
-      iframe.remove();
-    } catch {
-      // ignore
-    }
-  };
-
-  iframe.onload = () => {
-    const win = iframe.contentWindow;
-    if (!win) {
-      cleanup();
-      throw new Error('Print failed');
-    }
-
-    win.onafterprint = cleanup;
-    win.focus();
-    win.print();
-  };
 }
