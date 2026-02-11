@@ -1,267 +1,189 @@
-import { Invoice } from '@/types/invoice';
-import { format } from 'date-fns';
-import { numberToWords } from './numberToWords';
+import { Invoice } from "@/types/invoice";
+import { numberToWords } from "./numberToWords";
 
-const formatNumber = (amount: number) => {
-  return new Intl.NumberFormat('en-IN', {
-    minimumFractionDigits: 2, maximumFractionDigits: 2,
-  }).format(amount);
-};
-
-interface GstSlab {
-  hsnCode: string;
-  cgstPercent: number;
-  sgstPercent: number;
-  taxableAmount: number;
-  cgstAmount: number;
-  sgstAmount: number;
-  totalTax: number;
-}
-
-function groupByGstSlab(items: Invoice['items']): GstSlab[] {
-  const map = new Map<string, GstSlab>();
-  for (const item of items) {
-    const key = `${item.hsnCode || '-'}_${item.cgstPercent}_${item.sgstPercent}`;
-    const existing = map.get(key);
-    if (existing) {
-      existing.taxableAmount += item.amount;
-      existing.cgstAmount += item.cgstAmount;
-      existing.sgstAmount += item.sgstAmount;
-      existing.totalTax += item.cgstAmount + item.sgstAmount;
-    } else {
-      map.set(key, {
-        hsnCode: item.hsnCode || '-',
-        cgstPercent: item.cgstPercent,
-        sgstPercent: item.sgstPercent,
-        taxableAmount: item.amount,
-        cgstAmount: item.cgstAmount,
-        sgstAmount: item.sgstAmount,
-        totalTax: item.cgstAmount + item.sgstAmount,
-      });
-    }
-  }
-  return Array.from(map.values());
-}
-
-function getFinancialYear(dateStr: string): string {
-  const d = new Date(dateStr);
-  const year = d.getFullYear();
-  const month = d.getMonth(); // 0-based
-  if (month >= 3) {
-    return `${year}-${(year + 1).toString().slice(-2)}`;
-  }
-  return `${year - 1}-${year.toString().slice(-2)}`;
-}
-
-export function generateInvoicePDF(invoice: Invoice): void {
-  const totals = {
-    amount: invoice.items.reduce((sum, item) => sum + item.amount, 0),
-    cgstAmount: invoice.items.reduce((sum, item) => sum + item.cgstAmount, 0),
-    sgstAmount: invoice.items.reduce((sum, item) => sum + item.sgstAmount, 0),
-    total: invoice.items.reduce((sum, item) => sum + item.total, 0),
+export const generateInvoicePDF = (invoice: Invoice) => {
+  const formatNumber = (num: number) => {
+    return new Intl.NumberFormat('en-IN', {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    }).format(num);
   };
 
-  const gstSlabs = groupByGstSlab(invoice.items);
+  // Calculate totals for the items table
+  const totals = invoice.items.reduce((acc, item) => ({
+    amount: acc.amount + (item.qty * item.rate),
+    cgstAmount: acc.cgstAmount + (item.cgstAmount || 0),
+    sgstAmount: acc.sgstAmount + (item.sgstAmount || 0)
+  }), { amount: 0, cgstAmount: 0, sgstAmount: 0 });
 
-  const itemRowsHTML = invoice.items.map((item, index) => `
+  // Group items by GST rate for the tax table
+  const gstSlabs = invoice.items.reduce((acc: any, item) => {
+    const rate = item.cgstPercent + item.sgstPercent;
+    if (!acc[rate]) {
+      acc[rate] = { hsn: item.hsnCode, cgstRate: item.cgstPercent, cgstTax: 0, sgstRate: item.sgstPercent, sgstTax: 0, total: 0 };
+    }
+    acc[rate].cgstTax += item.cgstAmount || 0;
+    acc[rate].sgstTax += item.sgstAmount || 0;
+    acc[rate].total += (item.cgstAmount || 0) + (item.sgstAmount || 0);
+    return acc;
+  }, {});
+
+  const gstSlabRowsHTML = Object.entries(gstSlabs).map(([rate, data]: [string, any]) => `
     <tr>
-      <td>${index + 1}</td>
-      <td class="particulars">${item.name}</td>
+      <td>${data.hsn || '-'}</td>
+      <td>${data.cgstRate}%</td>
+      <td>${formatNumber(data.cgstTax)}</td>
+      <td>${data.sgstRate}%</td>
+      <td>${formatNumber(data.sgstTax)}</td>
+      <td>${formatNumber(data.total)}</td>
+    </tr>
+  `).join('');
+
+  const itemsRowsHTML = invoice.items.map((item, index) => `
+    <tr>
+      <td style="width: 40px;">${index + 1}</td>
+      <td class="particulars-cell">${item.name}</td>
       <td>${item.hsnCode || '-'}</td>
       <td>${item.qty}</td>
-      <td class="amt">${formatNumber(item.rate)}</td>
-      <td class="amt">${formatNumber(item.amount)}</td>
+      <td>${formatNumber(item.rate)}</td>
+      <td class="amt">${formatNumber(item.qty * item.rate)}</td>
     </tr>
   `).join('');
 
-  const emptyRowsCount = Math.max(0, 20 - invoice.items.length);
-  const emptyRowsHTML = Array.from({ length: emptyRowsCount }).map(() => `
-    <tr class="empty-row">
-      <td>&nbsp;</td><td>&nbsp;</td>
-      <td>&nbsp;</td><td>&nbsp;</td>
-      <td>&nbsp;</td><td>&nbsp;</td>
-    </tr>
-  `).join('');
+  // Fixed Bank Account to String to avoid .00 decimals
+  const bankAccountNumber = "2402212258785540";
 
-  const gstSlabRowsHTML = gstSlabs.map(slab => `
-    <tr>
-      <td>${slab.hsnCode}</td>
-      <td>${slab.cgstPercent}%</td>
-      <td class="amt">${formatNumber(slab.cgstAmount)}</td>
-      <td>${slab.sgstPercent}%</td>
-      <td class="amt">${formatNumber(slab.sgstAmount)}</td>
-      <td class="amt" style="font-weight:bold">${formatNumber(slab.totalTax)}</td>
-    </tr>
-  `).join('');
+  return `
+    <!DOCTYPE html>
+    <html>
+    <head>
+      <meta charset="UTF-8">
+      <style>
+        @page { size: A4; margin: 10mm; }
+        body { font-family: sans-serif; font-size: 11px; margin: 0; padding: 0; color: #000; }
+        .invoice-container { width: 100%; border: 1px solid #000; }
+        
+        /* Header Section */
+        .top-header { text-align: center; border-bottom: 1px solid #000; padding: 5px; }
+        .company-name { font-size: 22px; font-weight: bold; margin: 0; }
+        .company-address { font-size: 10px; margin: 2px 0; }
+        
+        .billing-header { display: flex; width: 100%; border-bottom: 1px solid #000; }
+        .billing-box { width: 50%; padding: 5px; border-right: 1px solid #000; }
+        .details-box { width: 50%; padding: 5px; }
+        .details-box table { width: 100%; border: none !important; }
+        .details-box td { border: none !important; text-align: left !important; padding: 2px !important; }
 
-  const htmlContent = `
-<!DOCTYPE html>
-<html>
-<head>
-  <meta charset="UTF-8">
-  <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700&display=swap" rel="stylesheet">
-  <style>
-    @page { size: A4 portrait; margin: 10mm 10mm 10mm 10mm; }
-    * { box-sizing: border-box; }
-    body { font-family: 'Poppins', Arial, sans-serif; font-size: 11px; color: #000; margin: 0; padding: 0; }
-    .container { width: 100%; max-width: 190mm; margin: 0 auto; height: 277mm; display: flex; flex-direction: column; }
-    .header { border-bottom: 1px solid #000; padding-bottom: 6px; margin-bottom: 8px; }
-    .header-top { display: flex; justify-content: space-between; font-size: 10px; margin-bottom: 2px; }
-    .company-name { text-align: center; font-size: 26px; font-weight: bold; margin: 2px 0; }
-    .company-address { text-align: center; font-size: 9px; }
-    .tax-title { text-align: center; border: 1px solid #000; padding: 4px 0; margin-bottom: 8px; font-size: 14px; font-weight: bold; }
-    .info-section { display: flex; gap: 0; margin-bottom: 8px; font-size: 10px; }
-    .info-left, .info-right { flex: 1; }
-    .info-row { display: flex; gap: 6px; margin-bottom: 3px; align-items: center; }
-    .info-label { font-weight: 600; min-width: 55px; white-space: nowrap; }
-    .info-value { flex: 1; border-bottom: 1px solid #ccc; padding-bottom: 1px; }
-    table { border-collapse: collapse; width: 100%; page-break-inside: avoid; }
-    .items-table { border: 1px solid #000; margin-bottom: 8px; font-size: 10px; }
-    .items-table th, .items-table td { border: 1px solid #000; padding: 3px 5px; text-align: center; vertical-align: middle; }
-    .items-table th { font-weight: bold; background-color: #f5f5f5; }
-    .items-table td.particulars { text-align: left; padding-left: 8px; }
-    .items-table td.amt { text-align: right; }
-    .items-table .empty-row td { border-left: 1px solid #000; border-right: 1px solid #000; border-top: none; border-bottom: none; height: 18px; }
-    .total-row { font-weight: bold; background-color: #f5f5f5; }
-    .summary-section { display: flex; gap: 10px; margin-bottom: 8px; }
-    .summary-left { flex: 1.2; font-size: 10px; display: flex; flex-direction: column; justify-content: center; }
-    .summary-right { flex: 0.8; }
-    .tax-table { border: 1px solid #000; font-size: 10px; page-break-inside: avoid; }
-    .tax-table th, .tax-table td { border: 1px solid #000; padding: 3px 5px; text-align: center; vertical-align: middle; }
-    .tax-table th { font-weight: bold; }
-    .tax-table td.amt { text-align: right; }
-    .footer-section { display: flex; gap: 16px; border-top: 1px solid #000; padding-top: 6px; font-size: 9px; margin-top: auto; }
-    .footer-left { flex: 1; }
-    .footer-right { flex: 1; text-align: right; }
-  </style>
-</head>
-<body>
-  <div class="container">
-    <div class="header">
-      <div class="header-top">
-        <span>GSTIN NO - 24CMAPK3117Q1ZZ</span>
-        <span>79907 13846 94283 19484</span>
-      </div>
-      <div class="company-name">SK ENTERPRISE</div>
-      <div class="company-address">SHOP NO 28. SHIV OM CIRCLE, GOLDEN POINT, DARED, PHASE III, JAMNAGAR</div>
-    </div>
+        /* Main Table Styles - Forced thin borders and vertical centering */
+        table { width: 100%; border-collapse: collapse !important; table-layout: fixed; }
+        th, td { 
+          border: 1px solid #000 !important; 
+          padding: 6px 4px !important; 
+          vertical-align: middle !important; 
+          text-align: center !important;
+          word-wrap: break-word;
+        }
+        th { background-color: #f2f2f2; font-weight: bold; }
+        .particulars-cell { text-align: left !important; padding-left: 8px !important; width: 40%; }
+        .amt { text-align: right !important; padding-right: 8px !important; }
 
-    <div class="tax-title">TAX INVOICE</div>
+        /* Summary Section */
+        .summary-wrapper { display: flex; width: 100%; border-top: 1px solid #000; }
+        .words-section { width: 60%; padding: 8px; border-right: 1px solid #000; }
+        .tax-section { width: 40%; }
+        
+        .bank-info { padding: 10px; border-top: 1px solid #000; font-size: 10px; line-height: 1.4; }
+        .signature-box { text-align: right; padding: 10px; border-top: 1px solid #000; height: 80px; }
+      </style>
+    </head>
+    <body>
+      <div class="invoice-container">
+        <div class="top-header">
+          <p style="margin:0; font-size: 10px;">GSTIN NO: 24CMAPK3117QIZZ</p>
+          <h1 class="company-name">SK ENTERPRISE</h1>
+          <p class="company-address">SHOP NO 28, SHIV OM CIRCLE, GOLDEN POINT, DARED, PHASE III, JAMNAGAR</p>
+          <h2 style="margin: 5px 0; font-size: 14px; text-decoration: underline;">TAX INVOICE</h2>
+        </div>
 
-    <div class="info-section">
-      <div class="info-left">
-        <div class="info-row"><span class="info-label">BILLED</span><span class="info-value">${invoice.customerName}</span></div>
-        <div class="info-row"><span class="info-label">ADDRESS</span><span class="info-value">${invoice.address || '-'}</span></div>
-        <div class="info-row"><span class="info-label">GSTIN</span><span class="info-value">${invoice.gstin || '-'}</span></div>
-      </div>
-      <div class="info-right">
-        <div class="info-row"><span class="info-value">${invoice.invoiceNumber}</span><span class="info-label" style="text-align:right;min-width:auto;margin-left:6px">INVOICE NO</span></div>
-        <div class="info-row"><span class="info-value">${format(new Date(invoice.date), 'dd/MM/yyyy')}</span><span class="info-label" style="text-align:right;min-width:auto;margin-left:6px">DATED</span></div>
-        <div class="info-row"><span class="info-value">${invoice.po || '-'}</span><span class="info-label" style="text-align:right;min-width:auto;margin-left:6px">ORDER NO</span></div>
-      </div>
-    </div>
+        <div class="billing-header">
+          <div class="billing-box">
+            <strong>BILLED TO:</strong><br/>
+            ${invoice.customerName}<br/>
+            ${invoice.customerAddress || ''}<br/>
+            GSTIN: ${invoice.customerGstin || '-'}
+          </div>
+          <div class="details-box">
+            <table>
+              <tr><td>Invoice No:</td><td><strong>${invoice.invoiceNumber}</strong></td></tr>
+              <tr><td>Date:</td><td>${new Date(invoice.date).toLocaleDateString('en-GB')}</td></tr>
+            </table>
+          </div>
+        </div>
 
-    <table class="items-table">
-      <thead>
-        <tr>
-          <th style="width:35px">SR NO</th>
-          <th>PARTICULARS</th>
-          <th style="width:50px">HSN</th>
-          <th style="width:35px">QTY</th>
-          <th style="width:55px">RATE</th>
-          <th style="width:75px">AMOUNT</th>
-        </tr>
-      </thead>
-      <tbody>
-        ${itemRowsHTML}
-        ${emptyRowsHTML}
-        <tr class="total-row">
-          <td></td>
-          <td style="font-weight:bold">TOTAL</td>
-          <td></td>
-          <td></td>
-          <td></td>
-          <td class="amt" style="font-weight:bold">${formatNumber(totals.amount)}</td>
-        </tr>
-      </tbody>
-    </table>
-
-    <div class="summary-section">
-      <div class="summary-left">
-        <p style="margin:0 0 1px 0"><strong>GST Amount in Words</strong></p>
-        <p style="margin:0 0 6px 0">${numberToWords(totals.cgstAmount + totals.sgstAmount)}</p>
-        <p style="margin:0 0 1px 0"><strong>Grand Total in Words</strong></p>
-        <p style="margin:0">${numberToWords(invoice.grandTotal)}</p>
-      </div>
-      <div class="summary-right">
-        <table class="tax-table">
+        <table>
           <thead>
             <tr>
-              <th rowspan="2">HSN</th>
-              <th colspan="2">CGST</th>
-              <th colspan="2">SGST</th>
-              <th rowspan="2">TOTAL</th>
-            </tr>
-            <tr>
-              <th style="font-size:9px">RATE</th>
-              <th style="font-size:9px">TAX</th>
-              <th style="font-size:9px">RATE</th>
-              <th style="font-size:9px">TAX</th>
+              <th style="width: 40px;">SR</th>
+              <th class="particulars-cell">PARTICULARS</th>
+              <th>HSN</th>
+              <th>QTY</th>
+              <th>RATE</th>
+              <th>AMOUNT</th>
             </tr>
           </thead>
           <tbody>
-            ${gstSlabRowsHTML}
+            ${itemsRowsHTML}
+            <tr>
+              <td colspan="5" style="text-align: right !important; font-weight: bold;">TOTAL</td>
+              <td class="amt" style="font-weight: bold;">${formatNumber(totals.amount)}</td>
+            </tr>
           </tbody>
         </table>
-        <div style="border:1px solid #000;border-top:0;padding:3px 5px;text-align:right;font-weight:bold;font-size:10px">
-          TOTAL: ${formatNumber(invoice.grandTotal)}
+
+        <div class="summary-wrapper">
+          <div class="words-section">
+            <p><strong>Grand Total in Words:</strong><br/>${numberToWords(invoice.grandTotal)}</p>
+          </div>
+          <div class="tax-section">
+            <table>
+              <thead>
+                <tr>
+                  <th>HSN</th>
+                  <th colspan="2">CGST</th>
+                  <th colspan="2">SGST</th>
+                </tr>
+                <tr>
+                  <th style="font-size: 8px;"></th>
+                  <th style="font-size: 8px;">Rate</th>
+                  <th style="font-size: 8px;">Tax</th>
+                  <th style="font-size: 8px;">Rate</th>
+                  <th style="font-size: 8px;">Tax</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${gstSlabRowsHTML}
+              </tbody>
+            </table>
+            <div style="padding: 5px; text-align: right; font-weight: bold; border-top: 1px solid #000;">
+              Total: ${formatNumber(invoice.grandTotal)}
+            </div>
+          </div>
+        </div>
+
+        <div class="bank-info">
+          <strong>BANK DETAILS:</strong><br/>
+          Bank Name: AU Small Finance Bank<br/>
+          A/c No: ${bankAccountNumber}<br/>
+          IFSC: AUBL0002142
+        </div>
+
+        <div class="signature-box">
+          <p style="margin: 0;">For, <strong>SK ENTERPRISE</strong></p>
+          <br/><br/>
+          <p style="margin: 0;">Authorized Signatory</p>
         </div>
       </div>
-    </div>
-
-    <div class="footer-section">
-      <div class="footer-left">
-        <strong>BANK DETAILS</strong><br/>
-        AU Small Finance Bank<br/>
-        2402212258785540<br/>
-        AUBL0002142
-      </div>
-      <div class="footer-right">
-        <p style="font-weight:bold;font-style:italic;margin-bottom:40px">for SK ENTERPRISE</p>
-        <p>Authorized Signature</p>
-      </div>
-    </div>
-  </div>
-</body>
-</html>
-`;
-
-  // Generate PDF using html2pdf.js
-  const element = document.createElement('div');
-  element.innerHTML = htmlContent;
-  document.body.appendChild(element);
-
-  const customerSlug = invoice.customerName.replace(/[^a-zA-Z0-9]/g, '-').replace(/-+/g, '-');
-  const fy = getFinancialYear(invoice.date);
-  const filename = `${customerSlug}-${invoice.invoiceNumber}-${fy}.pdf`;
-
-  import('html2pdf.js').then((html2pdfModule) => {
-    const html2pdf = html2pdfModule.default;
-    html2pdf()
-      .set({
-        margin: [10, 10, 10, 10],
-        filename,
-        image: { type: 'jpeg', quality: 0.98 },
-        html2canvas: { scale: 2, useCORS: true, logging: false },
-        jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' },
-      })
-      .from(element)
-      .save()
-      .then(() => {
-        document.body.removeChild(element);
-      })
-      .catch(() => {
-        document.body.removeChild(element);
-      });
-  });
-}
+    </body>
+    </html>
+  `;
+};
